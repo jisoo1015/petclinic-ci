@@ -41,6 +41,20 @@ pipeline {
                 sh '''
                 echo "Pushing image to ECR..."
                 docker push $ECR_URI:$IMAGE_TAG
+
+                echo "Tagging and pushing as latest..."
+                docker tag $ECR_URI:$IMAGE_TAG $ECR_URI:latest
+                docker push $ECR_URI:latest
+                '''
+            }
+        }
+
+        stage('Update Kubernetes Deployment') {
+            steps {
+                sh '''
+                echo "Updating Kubernetes deployment to use $IMAGE_TAG..."
+                kubectl set image deployment/was was=$ECR_URI:$IMAGE_TAG -n petclinic
+                kubectl rollout status deployment/was -n petclinic --timeout=5m
                 '''
             }
         }

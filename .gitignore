@@ -1,0 +1,43 @@
+# IDE
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Build artifacts
+target/
+build/
+*.class
+*.jar
+*.war
+*.ear
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# Logs
+*.log
+logs/
+
+# Docker
+.dockerignore
+
+# Local test files
+*.local
+*.tmp
+
+# Kubernetes
+*.kubeconfig
+
+# Manifest clone directory
+petclinic-manifests/

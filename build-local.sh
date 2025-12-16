@@ -65,15 +65,15 @@ build_web() {
     echo -e "${GREEN}[WEB] Building Nginx Frontend...${NC}"
 
     # 파일 확인
-    if [ ! -d "web/startbootstrap-grayscale-gh-pages" ]; then
-        echo -e "${RED}Error: web/startbootstrap-grayscale-gh-pages directory not found!${NC}"
+    if [ ! -d "web/static/startbootstrap-grayscale-gh-pages" ]; then
+        echo -e "${RED}Error: web/static/startbootstrap-grayscale-gh-pages directory not found!${NC}"
         exit 1
     fi
 
     # Docker 빌드
-    docker build -f Dockerfile.web \
+    docker build -f web/Dockerfile \
         -t ${ECR_WEB_URI}:${IMAGE_TAG} \
-        -t ${ECR_WEB_URI}:latest .
+        -t ${ECR_WEB_URI}:latest web/
 
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}WEB image built successfully!${NC}"
@@ -89,15 +89,15 @@ build_was() {
     echo -e "${GREEN}[WAS] Building Spring Boot Application...${NC}"
 
     # 파일 확인
-    if [ ! -f "pom.xml" ]; then
-        echo -e "${RED}Error: pom.xml not found!${NC}"
+    if [ ! -f "was/pom.xml" ]; then
+        echo -e "${RED}Error: was/pom.xml not found!${NC}"
         exit 1
     fi
 
     # Docker 빌드
-    docker build -f Dockerfile \
+    docker build -f was/Dockerfile \
         -t ${ECR_WAS_URI}:${IMAGE_TAG} \
-        -t ${ECR_WAS_URI}:latest .
+        -t ${ECR_WAS_URI}:latest was/
 
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}WAS image built successfully!${NC}"

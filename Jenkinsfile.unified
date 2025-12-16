@@ -63,8 +63,8 @@ pipeline {
 
                     // 빌드 대상 자동 결정 (BUILD_TARGET이 ALL일 때만)
                     if (params.BUILD_TARGET == 'ALL') {
-                        env.BUILD_WEB = changes.contains('web/') || changes.contains('Dockerfile.web') ? 'true' : 'false'
-                        env.BUILD_WAS = changes.contains('src/') || changes.contains('pom.xml') || changes.contains('Dockerfile') ? 'true' : 'false'
+                        env.BUILD_WEB = changes.contains('web/') ? 'true' : 'false'
+                        env.BUILD_WAS = changes.contains('was/') ? 'true' : 'false'
 
                         // 첫 빌드거나 변경 감지 실패 시 모두 빌드
                         if (changes == 'all' || env.BUILD_NUMBER == '1') {
@@ -106,7 +106,7 @@ pipeline {
                 ls -lh web/
 
                 echo "Building WEB Docker image..."
-                docker build -f Dockerfile.web -t $ECR_WEB_URI:$IMAGE_TAG -t $ECR_WEB_URI:latest .
+                docker build -f web/Dockerfile -t $ECR_WEB_URI:$IMAGE_TAG -t $ECR_WEB_URI:latest web/
 
                 echo "Pushing WEB image to ECR..."
                 docker push $ECR_WEB_URI:$IMAGE_TAG
@@ -128,7 +128,7 @@ pipeline {
 
                 sh '''
                 echo "Building WAS Docker image..."
-                docker build -f Dockerfile -t $ECR_WAS_URI:$IMAGE_TAG -t $ECR_WAS_URI:latest .
+                docker build -f was/Dockerfile -t $ECR_WAS_URI:$IMAGE_TAG -t $ECR_WAS_URI:latest was/
 
                 echo "Pushing WAS image to ECR..."
                 docker push $ECR_WAS_URI:$IMAGE_TAG

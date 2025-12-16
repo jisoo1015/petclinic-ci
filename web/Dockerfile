@@ -7,10 +7,10 @@ FROM nginx:1.25-alpine
 RUN rm -rf /etc/nginx/conf.d/*
 
 # 정적 파일 복사
-COPY web/startbootstrap-grayscale-gh-pages/ /usr/share/nginx/html/
+COPY static/startbootstrap-grayscale-gh-pages/ /usr/share/nginx/html/
 
 # Welcome 이미지 복사
-COPY web/image.png /usr/share/nginx/html/
+COPY static/image.png /usr/share/nginx/html/
 
 # 헬스체크를 위한 기본 설정 추가 (ConfigMap이 없을 때를 대비)
 RUN printf 'server {\n\
