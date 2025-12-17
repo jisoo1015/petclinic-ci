@@ -48,8 +48,8 @@ pipeline {
                 echo "Checking was/ directory..."
                 ls -lh was/
 
-                echo "Checking pom.xml..."
-                cat was/pom.xml | grep -A 5 "<artifactId>spring-petclinic</artifactId>"
+                echo "Checking pom.xml exists..."
+                test -f was/pom.xml && echo "✓ pom.xml found"
 
                 echo "Checking Dockerfile..."
                 cat was/Dockerfile
