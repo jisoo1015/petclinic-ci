@@ -7,11 +7,6 @@ pipeline {
             defaultValue: "build-${BUILD_NUMBER}",
             description: 'Docker 이미지 태그 (기본값: build-N)'
         )
-        booleanParam(
-            name: 'UPDATE_MANIFEST',
-            defaultValue: true,
-            description: 'Manifest 리포지토리 업데이트 여부 (ArgoCD sync용)'
-        )
     }
 
     environment {
@@ -24,10 +19,6 @@ pipeline {
 
         // 이미지 태그
         IMAGE_TAG      = "${params.IMAGE_TAG}"
-
-        // Manifest 리포지토리
-        MANIFEST_REPO  = 'https://github.com/jisoo1015/petclinic-manifests.git'
-        MANIFEST_DIR   = 'petclinic-manifests'
     }
 
     stages {
@@ -114,65 +105,6 @@ pipeline {
                 '''
             }
         }
-
-        stage('Update Manifest for ArgoCD') {
-            when {
-                expression { params.UPDATE_MANIFEST == true }
-            }
-            steps {
-                echo "=========================================="
-                echo "  Updating Manifest Repository"
-                echo "=========================================="
-                withCredentials([usernamePassword(
-                    credentialsId: 'jisoo1015',
-                    usernameVariable: 'GIT_USER',
-                    passwordVariable: 'GIT_TOKEN'
-                )]) {
-                    sh '''
-                    # Manifest 리포지토리 클론
-                    rm -rf ${MANIFEST_DIR}
-                    git clone https://${GIT_TOKEN}@github.com/jisoo1015/petclinic-manifests.git ${MANIFEST_DIR}
-                    cd ${MANIFEST_DIR}
-
-                    # Git 사용자 설정
-                    git config user.name "Jenkins-WEB"
-                    git config user.email "jenkins-web@localhost"
-
-                    # WEB deployment 이미지 업데이트
-                    if [ -f k8s-manifests/04-web-deployment.yaml ]; then
-                        echo "Updating WEB deployment manifest..."
-                        sed -i "s|image:.*petclinic-3tier-dev-web:.*|image: ${ECR_URI}:${IMAGE_TAG}|g" k8s-manifests/04-web-deployment.yaml
-
-                        echo "Updated manifest:"
-                        grep "image:.*petclinic-3tier-dev-web" k8s-manifests/04-web-deployment.yaml
-                    else
-                        echo "Warning: k8s-manifests/04-web-deployment.yaml not found"
-                        ls -la k8s-manifests/
-                    fi
-
-                    # 변경사항 확인 및 커밋
-                    if [ -n "$(git status --porcelain)" ]; then
-                        git add .
-                        git commit -m "Update WEB image to ${IMAGE_TAG}
-
-- Component: WEB (Nginx)
-- Image: ${ECR_URI}:${IMAGE_TAG}
-- Commit: ${GIT_COMMIT_SHORT}
-- Build: ${BUILD_NUMBER}"
-
-                        # Push
-                        git push https://${GIT_TOKEN}@github.com/jisoo1015/petclinic-manifests.git main || \
-                        git push https://${GIT_TOKEN}@github.com/jisoo1015/petclinic-manifests.git master
-
-                        echo "✓ Manifest updated and pushed"
-                        echo "ArgoCD will detect this change and sync"
-                    else
-                        echo "No changes to manifest"
-                    fi
-                    '''
-                }
-            }
-        }
     }
 
     post {
@@ -183,12 +115,8 @@ pipeline {
             echo "Image: ${ECR_URI}:${IMAGE_TAG}"
             echo "Commit: ${env.GIT_COMMIT_SHORT}"
             echo ""
-            echo "Next Steps:"
-            echo "1. ECR에 이미지 푸시 완료"
-            echo "2. Manifest 업데이트 완료"
-            echo "3. ArgoCD가 변경사항을 감지하여 자동 배포"
-            echo ""
-            echo "ArgoCD Dashboard에서 배포 상태 확인"
+            echo "ECR 이미지 푸시 완료"
+            echo "ArgoCD에서 배포 관리"
             echo "=========================================="
         }
         failure {
@@ -202,9 +130,6 @@ pipeline {
             echo "Cleaning up Docker images..."
             docker rmi ${ECR_URI}:${IMAGE_TAG} || true
             docker rmi ${ECR_URI}:latest || true
-
-            echo "Cleaning up manifest directory..."
-            rm -rf ${MANIFEST_DIR}
             '''
         }
     }
