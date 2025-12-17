@@ -214,43 +214,6 @@ pipeline {
             }
         }
 
-        stage('Deploy to Kubernetes') {
-            steps {
-                script {
-                    echo "========================================"
-                    echo "  Deploying to Kubernetes"
-                    echo "========================================"
-
-                    if (env.BUILD_WEB == 'true') {
-                        sh """
-                        echo "Updating WEB deployment..."
-                        kubectl set image deployment/web web=${ECR_WEB_URI}:${IMAGE_TAG} -n petclinic
-                        kubectl rollout status deployment/web -n petclinic --timeout=5m
-                        echo "WEB deployment updated successfully"
-                        """
-                    }
-
-                    if (env.BUILD_WAS == 'true') {
-                        sh """
-                        echo "Updating WAS deployment..."
-                        kubectl set image deployment/was was=${ECR_WAS_URI}:${IMAGE_TAG} -n petclinic
-                        kubectl rollout status deployment/was -n petclinic --timeout=5m
-                        echo "WAS deployment updated successfully"
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Verify Deployment') {
-            steps {
-                sh '''
-                echo "Verifying deployments..."
-                kubectl get pods -n petclinic -l app=petclinic
-                kubectl get svc -n petclinic
-                '''
-            }
-        }
     }
 
     post {
@@ -267,6 +230,9 @@ pipeline {
                 }
             }
             echo "Commit: ${env.GIT_COMMIT_SHORT}"
+            echo ""
+            echo "ArgoCD will auto-sync the deployment"
+            echo "Monitor: ArgoCD Dashboard"
             echo "======================================"
         }
         failure {

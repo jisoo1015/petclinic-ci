@@ -1,0 +1,212 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(
+            name: 'IMAGE_TAG',
+            defaultValue: "build-${BUILD_NUMBER}",
+            description: 'Docker 이미지 태그 (기본값: build-N)'
+        )
+        booleanParam(
+            name: 'UPDATE_MANIFEST',
+            defaultValue: true,
+            description: 'Manifest 리포지토리 업데이트 여부 (ArgoCD sync용)'
+        )
+    }
+
+    environment {
+        AWS_REGION     = 'ap-northeast-2'
+        AWS_ACCOUNT_ID = '723165663216'
+
+        // WAS ECR
+        ECR_REPO       = 'petclinic-3tier-dev-was'
+        ECR_URI        = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+
+        // 이미지 태그
+        IMAGE_TAG      = "${params.IMAGE_TAG}"
+
+        // Manifest 리포지토리
+        MANIFEST_REPO  = 'https://github.com/jisoo1015/petclinic-manifests.git'
+        MANIFEST_DIR   = 'petclinic-manifests'
+    }
+
+    stages {
+
+        stage('Checkout Source') {
+            steps {
+                echo "=========================================="
+                echo "  WAS Pipeline - Checkout"
+                echo "=========================================="
+                checkout scm
+                script {
+                    env.GIT_COMMIT_SHORT = sh(
+                        script: "git rev-parse --short HEAD",
+                        returnStdout: true
+                    ).trim()
+                    echo "Git Commit: ${env.GIT_COMMIT_SHORT}"
+                }
+            }
+        }
+
+        stage('Verify WAS Files') {
+            steps {
+                echo "=========================================="
+                echo "  Verifying WAS Files"
+                echo "=========================================="
+                sh '''
+                echo "Checking was/ directory..."
+                ls -lh was/
+
+                echo "Checking pom.xml..."
+                cat was/pom.xml | grep -A 5 "<artifactId>spring-petclinic</artifactId>"
+
+                echo "Checking Dockerfile..."
+                cat was/Dockerfile
+                '''
+            }
+        }
+
+        stage('Login to ECR') {
+            steps {
+                echo "=========================================="
+                echo "  Login to Amazon ECR"
+                echo "=========================================="
+                sh '''
+                aws ecr get-login-password --region $AWS_REGION \
+                  | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                echo "✓ ECR login successful"
+                '''
+            }
+        }
+
+        stage('Build WAS Image') {
+            steps {
+                echo "=========================================="
+                echo "  Building WAS Docker Image"
+                echo "=========================================="
+                echo "This stage includes Maven build (may take several minutes)..."
+                sh '''
+                echo "Building: ${ECR_URI}:${IMAGE_TAG}"
+                docker build \
+                  -f was/Dockerfile \
+                  -t ${ECR_URI}:${IMAGE_TAG} \
+                  -t ${ECR_URI}:latest \
+                  was/
+
+                echo "✓ WAS image built successfully"
+                docker images | grep petclinic-3tier-dev-was
+                '''
+            }
+        }
+
+        stage('Push to ECR') {
+            steps {
+                echo "=========================================="
+                echo "  Pushing WAS Image to ECR"
+                echo "=========================================="
+                sh '''
+                echo "Pushing ${ECR_URI}:${IMAGE_TAG}..."
+                docker push ${ECR_URI}:${IMAGE_TAG}
+
+                echo "Pushing ${ECR_URI}:latest..."
+                docker push ${ECR_URI}:latest
+
+                echo "✓ WAS image pushed to ECR"
+                '''
+            }
+        }
+
+        stage('Update Manifest for ArgoCD') {
+            when {
+                expression { params.UPDATE_MANIFEST == true }
+            }
+            steps {
+                echo "=========================================="
+                echo "  Updating Manifest Repository"
+                echo "=========================================="
+                withCredentials([usernamePassword(
+                    credentialsId: 'jisoo1015',
+                    usernameVariable: 'GIT_USER',
+                    passwordVariable: 'GIT_TOKEN'
+                )]) {
+                    sh '''
+                    # Manifest 리포지토리 클론
+                    rm -rf ${MANIFEST_DIR}
+                    git clone https://${GIT_TOKEN}@github.com/jisoo1015/petclinic-manifests.git ${MANIFEST_DIR}
+                    cd ${MANIFEST_DIR}
+
+                    # Git 사용자 설정
+                    git config user.name "Jenkins-WAS"
+                    git config user.email "jenkins-was@localhost"
+
+                    # WAS deployment 이미지 업데이트
+                    if [ -f k8s-manifests/02-was-deployment.yaml ]; then
+                        echo "Updating WAS deployment manifest..."
+                        sed -i "s|image:.*petclinic-3tier-dev-was:.*|image: ${ECR_URI}:${IMAGE_TAG}|g" k8s-manifests/02-was-deployment.yaml
+
+                        echo "Updated manifest:"
+                        grep "image:.*petclinic-3tier-dev-was" k8s-manifests/02-was-deployment.yaml
+                    else
+                        echo "Warning: k8s-manifests/02-was-deployment.yaml not found"
+                        ls -la k8s-manifests/
+                    fi
+
+                    # 변경사항 확인 및 커밋
+                    if [ -n "$(git status --porcelain)" ]; then
+                        git add .
+                        git commit -m "Update WAS image to ${IMAGE_TAG}
+
+- Component: WAS (Spring Boot)
+- Image: ${ECR_URI}:${IMAGE_TAG}
+- Commit: ${GIT_COMMIT_SHORT}
+- Build: ${BUILD_NUMBER}"
+
+                        # Push
+                        git push https://${GIT_TOKEN}@github.com/jisoo1015/petclinic-manifests.git main || \
+                        git push https://${GIT_TOKEN}@github.com/jisoo1015/petclinic-manifests.git master
+
+                        echo "✓ Manifest updated and pushed"
+                        echo "ArgoCD will detect this change and sync"
+                    else
+                        echo "No changes to manifest"
+                    fi
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "=========================================="
+            echo "  WAS Pipeline Success!"
+            echo "=========================================="
+            echo "Image: ${ECR_URI}:${IMAGE_TAG}"
+            echo "Commit: ${env.GIT_COMMIT_SHORT}"
+            echo ""
+            echo "Next Steps:"
+            echo "1. ECR에 이미지 푸시 완료"
+            echo "2. Manifest 업데이트 완료"
+            echo "3. ArgoCD가 변경사항을 감지하여 자동 배포"
+            echo ""
+            echo "ArgoCD Dashboard에서 배포 상태 확인"
+            echo "=========================================="
+        }
+        failure {
+            echo "=========================================="
+            echo "  WAS Pipeline Failed!"
+            echo "=========================================="
+            echo "Check logs above for error details"
+        }
+        always {
+            sh '''
+            echo "Cleaning up Docker images..."
+            docker rmi ${ECR_URI}:${IMAGE_TAG} || true
+            docker rmi ${ECR_URI}:latest || true
+
+            echo "Cleaning up manifest directory..."
+            rm -rf ${MANIFEST_DIR}
+            '''
+        }
+    }
+}
