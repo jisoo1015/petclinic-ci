@@ -7,6 +7,11 @@ pipeline {
             defaultValue: "build-${BUILD_NUMBER}",
             description: 'Docker 이미지 태그 (기본값: build-N)'
         )
+        booleanParam(
+            name: 'UPDATE_MANIFEST',
+            defaultValue: true,
+            description: 'Manifest 리포지토리 이미지 태그 업데이트'
+        )
     }
 
     environment {
@@ -103,6 +108,59 @@ pipeline {
 
                 echo "✓ WEB image pushed to ECR"
                 '''
+            }
+        }
+
+        stage('Update Manifest Repo') {
+            when {
+                expression { params.UPDATE_MANIFEST == true }
+            }
+            steps {
+                echo "=========================================="
+                echo "  Updating Manifest Repository"
+                echo "=========================================="
+                withCredentials([usernamePassword(
+                    credentialsId: 'jisoo1015',
+                    usernameVariable: 'GIT_USER',
+                    passwordVariable: 'GIT_TOKEN'
+                )]) {
+                    sh '''
+                    set -e
+
+                    MANIFEST_REPO="https://github.com/jisoo1015/petclinic-manifests.git"
+                    MANIFEST_DIR="petclinic-manifests"
+
+                    rm -rf ${MANIFEST_DIR}
+                    git clone https://${GIT_USER}:${GIT_TOKEN}@github.com/jisoo1015/petclinic-manifests.git ${MANIFEST_DIR}
+
+                    cd ${MANIFEST_DIR}
+                    git config user.name "jenkins"
+                    git config user.email "kwltn34@gmail.com"
+
+                    if [ -d "k8s-manifests" ]; then
+                      MANIFEST_PATH="k8s-manifests/04-web-deployment.yaml"
+                    else
+                      MANIFEST_PATH="k8s/04-web-deployment.yaml"
+                    fi
+
+                    if [ ! -f "${MANIFEST_PATH}" ]; then
+                      echo "Manifest file not found: ${MANIFEST_PATH}"
+                      exit 1
+                    fi
+
+                    echo "Updating image tag in ${MANIFEST_PATH}"
+                    sed -i "s|image: .*petclinic-3tier-dev-web:.*|image: ${ECR_URI}:${IMAGE_TAG}|g" ${MANIFEST_PATH}
+
+                    if [ -n "$(git status --porcelain)" ]; then
+                      git add ${MANIFEST_PATH}
+                      git commit -m "Update WEB image to ${IMAGE_TAG} (Jenkins ${BUILD_NUMBER})"
+                      git push https://${GIT_USER}:${GIT_TOKEN}@github.com/jisoo1015/petclinic-manifests.git main
+                      echo "✓ Manifest updated and pushed"
+                    else
+                      echo "No changes in manifest repo"
+                    fi
+                    '''
+                }
             }
         }
     }
