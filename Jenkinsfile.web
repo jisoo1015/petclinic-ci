@@ -140,9 +140,9 @@ pipeline {
                     git rebase origin/main
 
                     if [ -d "k8s-manifests" ]; then
-                      MANIFEST_PATH="k8s-manifests/04-web-deployment.yaml"
+                      MANIFEST_PATH="k8s-manifests/04-web-rollout.yaml"
                     else
-                      MANIFEST_PATH="k8s/04-web-deployment.yaml"
+                      MANIFEST_PATH="k8s/04-web-rollout.yaml"
                     fi
 
                     if [ ! -f "${MANIFEST_PATH}" ]; then
