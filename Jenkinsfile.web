@@ -136,6 +136,8 @@ pipeline {
                     cd ${MANIFEST_DIR}
                     git config user.name "jenkins"
                     git config user.email "kwltn34@gmail.com"
+                    git fetch origin main
+                    git rebase origin/main
 
                     if [ -d "k8s-manifests" ]; then
                       MANIFEST_PATH="k8s-manifests/04-web-deployment.yaml"
